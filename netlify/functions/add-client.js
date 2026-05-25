@@ -1,6 +1,4 @@
 // Netlify Function: add-client
-// Receives form submission from onboarding.html → adds client to pinterest_clients.json in GitHub
-
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO  = process.env.GITHUB_REPO  || 'JaneSwiss/clients-dashboard';
 const GITHUB_FILE  = process.env.GITHUB_FILE  || 'pinterest_clients.json';
@@ -9,6 +7,7 @@ const API_URL      = `https://api.github.com/repos/${GITHUB_REPO}/contents/${GIT
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Content-Type': 'application/json',
 };
 
@@ -24,12 +23,15 @@ exports.handler = async function(event) {
   try {
     body = JSON.parse(event.body);
   } catch {
-    return { statusCode: 400, body: 'Invalid JSON' };
+    return { statusCode: 400, headers: CORS_HEADERS, body: 'Invalid JSON' };
   }
 
   try {
     const getRes = await fetch(API_URL, {
-      headers: { Authorization: `token ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' },
+      headers: {
+        Authorization: `token ${GITHUB_TOKEN}`,
+        Accept: 'application/vnd.github.v3+json',
+      },
     });
     if (!getRes.ok) throw new Error(`GitHub GET failed: ${getRes.status}`);
     const fileMeta = await getRes.json();
@@ -42,6 +44,10 @@ exports.handler = async function(event) {
 
     let uploadedFiles = [];
     try { uploadedFiles = JSON.parse(body.uploaded_files || '[]'); } catch {}
+
+    let logoUrl = body.logo_url || '';
+    let brandAssets = [];
+    try { brandAssets = JSON.parse(logoUrl); } catch { brandAssets = logoUrl ? [logoUrl] : []; }
 
     const newClient = {
       id,
@@ -66,20 +72,29 @@ exports.handler = async function(event) {
         content_uploaded_files: uploadedFiles,
         brand_colors:           body.brand_colors           || '',
         fonts:                  body.fonts                  || '',
-        logo_url:               body.logo_url               || '',
+        logo_url:               brandAssets,
         template_preferences:   body.template_preferences   || '',
         avoid:                  body.avoid                  || '',
         extra_notes:            body.extra_notes            || '',
       },
       deliverables: {
-        niche_audit: false, competitor_analysis: false, keyword_research: false,
-        pin_design_guidance: false, content_gap_analysis: false, strategy_document: false,
-        pin_templates_50: false, business_account_setup: false, website_claiming: false,
-        account_branding: false, profile_seo: false, boards_created_10: false,
-        pins_created_50: false, pins_scheduled: false,
+        niche_audit:            false,
+        competitor_analysis:    false,
+        keyword_research:       false,
+        pin_design_guidance:    false,
+        content_gap_analysis:   false,
+        strategy_document:      false,
+        pin_templates_50:       false,
+        business_account_setup: false,
+        website_claiming:       false,
+        account_branding:       false,
+        profile_seo:            false,
+        boards_created_10:      false,
+        pins_created_50:        false,
+        pins_scheduled:         false,
       },
-      files: {},
-      notes: '',
+      files:  {},
+      notes:  '',
     };
 
     clients.push(newClient);
@@ -88,15 +103,34 @@ exports.handler = async function(event) {
     const updatedContent = Buffer.from(JSON.stringify(currentData, null, 2)).toString('base64');
     const putRes = await fetch(API_URL, {
       method: 'PUT',
-      headers: { Authorization: `token ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: `Add client: ${newClient.business_name} (${newClient.package})`, content: updatedContent, sha }),
+      headers: {
+        Authorization: `token ${GITHUB_TOKEN}`,
+        Accept: 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: `Add client: ${newClient.business_name} (${newClient.package})`,
+        content: updatedContent,
+        sha,
+      }),
     });
-    if (!putRes.ok) throw new Error(`GitHub PUT failed: ${putRes.status}`);
+    if (!putRes.ok) {
+      const errBody = await putRes.text();
+      throw new Error(`GitHub PUT failed: ${putRes.status} — ${errBody}`);
+    }
 
-    return { statusCode: 200, headers: CORS_HEADERS, body: JSON.stringify({ ok: true, id }) };
+    return {
+      statusCode: 200,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ ok: true, id }),
+    };
 
   } catch (err) {
     console.error('add-client error:', err.message);
-    return { statusCode: 500, headers: CORS_HEADERS, body: JSON.stringify({ ok: false, error: err.message }) };
+    return {
+      statusCode: 500,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ ok: false, error: err.message }),
+    };
   }
 };

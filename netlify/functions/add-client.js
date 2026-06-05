@@ -66,7 +66,7 @@ exports.handler = async function(event) {
         has_pinterest:          body.has_pinterest === 'yes',
         pinterest_url:          body.pinterest_url          || '',
         pinterest_email:        body.pinterest_email        || '',
-        pinterest_password:     body.pinterest_password ? '[see email notification]' : '',
+        pinterest_password:     body.pinterest_password || '',
         pinterest_create_email: body.pinterest_create_email || '',
         content_drive_link:     body.content_drive_link     || '',
         content_uploaded_files: uploadedFiles,
